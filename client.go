@@ -10,18 +10,48 @@ import (
 )
 
 const (
-	ENDPOINT               = "https://maps-api.apple.com"
-	V1_TOKEN               = "/v1/token"              // https://developer.apple.com/documentation/applemapsserverapi/generate_a_maps_access_token
-	V1_GEO_CODE            = "/v1/geocode"            // https://developer.apple.com/documentation/applemapsserverapi/geocode_an_address
-	V1_REVERSE_GEO_CODE    = "/v1/reverseGeocode"     // https://developer.apple.com/documentation/applemapsserverapi/reverse_geocode_a_location
-	V1_SEARCH              = "/v1/search"             // https://developer.apple.com/documentation/applemapsserverapi/search_for_places_that_match_specific_criteria
-	V1_SEARCH_AUTOCOMPLETE = "/v1/searchAutocomplete" // https://developer.apple.com/documentation/applemapsserverapi/search_for_places_that_meet_specific_criteria_to_autocomplete_a_place_search
-	V1_DIRECTIONS          = "/v1/directions"         // https://developer.apple.com/documentation/applemapsserverapi/search_for_directions_and_estimated_travel_time_between_locations
-	V1_ETAS                = "/v1/etas"               // https://developer.apple.com/documentation/applemapsserverapi/determine_estimated_arrival_times_and_distances_to_one_or_more_destinations
+	V1_TOKEN               = "https://maps-api.apple.com/v1/token"              // https://developer.apple.com/documentation/applemapsserverapi/generate_a_maps_access_token
+	V1_GEO_CODE            = "https://maps-api.apple.com/v1/geocode"            // https://developer.apple.com/documentation/applemapsserverapi/geocode_an_address
+	V1_REVERSE_GEO_CODE    = "https://maps-api.apple.com/v1/reverseGeocode"     // https://developer.apple.com/documentation/applemapsserverapi/reverse_geocode_a_location
+	V1_SEARCH              = "https://maps-api.apple.com/v1/search"             // https://developer.apple.com/documentation/applemapsserverapi/search_for_places_that_match_specific_criteria
+	V1_SEARCH_AUTOCOMPLETE = "https://maps-api.apple.com/v1/searchAutocomplete" // https://developer.apple.com/documentation/applemapsserverapi/search_for_places_that_meet_specific_criteria_to_autocomplete_a_place_search
+	V1_DIRECTIONS          = "https://maps-api.apple.com/v1/directions"         // https://developer.apple.com/documentation/applemapsserverapi/search_for_directions_and_estimated_travel_time_between_locations
+	V1_ETAS                = "https://maps-api.apple.com/v1/etas"               // https://developer.apple.com/documentation/applemapsserverapi/determine_estimated_arrival_times_and_distances_to_one_or_more_destinations
 )
 
+// AccessTokenSaver is an interface to save and get access token.
+//
+// Please implement this interface if you want to save access token in Redis or other places.
+type AccessTokenSaver interface {
+	GetAccessToken(context.Context) (string, int64, error)
+	SetAccessToken(context.Context, string, int64) error
+}
+
+type memorySaver struct {
+	mapAuthToken       string
+	mapAccessToken     string
+	mapAccessTokenExp  int64
+	mapAccessTokenLock sync.RWMutex
+}
+
+func (s *memorySaver) GetAccessToken(ctx context.Context) (string, int64, error) {
+	s.mapAccessTokenLock.Lock()
+	defer s.mapAccessTokenLock.Unlock()
+	return s.mapAccessToken, s.mapAccessTokenExp, nil
+}
+
+func (s *memorySaver) SetAccessToken(ctx context.Context, accessToken string, exp int64) error {
+	s.mapAccessTokenLock.RLock()
+	s.mapAccessToken = accessToken
+	s.mapAccessTokenExp = exp
+	s.mapAccessTokenLock.RUnlock()
+	return nil
+}
+
 type Client interface {
-	RefreshMapAccessToken(context.Context) error
+	AccessTokenSaver
+
+	GetNewAccessToken(context.Context) (*AccessTokenResponse, error)
 	Geocode(context.Context, *GeocodeRequest) (*PlaceResults, error)
 	ReverseGeocode(context.Context, *ReverseRequest) (*PlaceResults, error)
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
@@ -30,51 +60,34 @@ type Client interface {
 	Eta(context.Context, *EtaRequest) (*EtaResponse, error)
 }
 
-type BaseClient struct {
-	mapAuthToken       string
-	mapAccessToken     string
-	mapAccessTokenExp  int64
-	mapAccessTokenLock sync.RWMutex
-
-	HTTPClient *http.Client
-
-	Endpoint          string
-	TokenAPI          string
-	GeoCodeAPI        string
-	ReverseGeocodeAPI string
-	SearchAPI         string
-	SearchAutoAPI     string
-	DirectionsAPI     string
-	EtasAPI           string
+type baseClient struct {
+	authToken  string
+	tokenSaver AccessTokenSaver
+	client     *http.Client
 }
 
-type Option func(*BaseClient)
+type Option func(*baseClient)
 
-// Use this func to set mapAuthToken.
-func WithMapAuthToken(token string) Option {
-	return func(c *BaseClient) {
-		c.mapAuthToken = token
+// Will use memory by default.
+func WithTokenSaver(saver AccessTokenSaver) Option {
+	return func(c *baseClient) {
+		c.tokenSaver = saver
 	}
 }
 
-func WithMapAccessToken(token string, expire int64) Option {
-	return func(c *BaseClient) {
-		c.mapAccessToken = token
-		c.mapAccessTokenExp = expire
+// Will use http.DefaultClient by default.
+func WithHTTPClient(client *http.Client) Option {
+	return func(c *baseClient) {
+		c.client = client
 	}
 }
 
-func NewClient(opts ...Option) Client {
-	c := &BaseClient{
-		HTTPClient:        http.DefaultClient,
-		Endpoint:          ENDPOINT,
-		TokenAPI:          V1_TOKEN,
-		GeoCodeAPI:        V1_GEO_CODE,
-		ReverseGeocodeAPI: V1_REVERSE_GEO_CODE,
-		SearchAPI:         V1_SEARCH,
-		SearchAutoAPI:     V1_SEARCH_AUTOCOMPLETE,
-		DirectionsAPI:     V1_DIRECTIONS,
-		EtasAPI:           V1_ETAS,
+func NewClient(authToken string, opts ...Option) Client {
+	c := &baseClient{
+		tokenSaver: &memorySaver{
+			mapAuthToken: authToken,
+		},
+		client: http.DefaultClient,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -90,60 +103,36 @@ func handleErr(httpStatusCode int, header http.Header, bodyBytes []byte) error {
 	}
 	resp := &ErrorResponse{}
 	if _err := json.Unmarshal(bodyBytes, resp); _err != nil {
-		// Server return invalid json.
-		// Just return the raw body.
 		return err
 	}
 	err.Response = resp
 	return err
 }
 
-func (c *BaseClient) RefreshMapAccessToken(ctx context.Context) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Endpoint+c.TokenAPI, nil)
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Authorization", "Bearer "+c.mapAuthToken)
-	httpResponse, err := c.HTTPClient.Do(request)
-	if err != nil {
-		return err
-	}
-	defer httpResponse.Body.Close()
-	bodyBytes, err := io.ReadAll(httpResponse.Body)
-	if err != nil {
-		return err
-	}
-	header := httpResponse.Header
-	if httpResponse.StatusCode != http.StatusOK {
-		return handleErr(httpResponse.StatusCode, header, bodyBytes)
-	}
-	resp := &AccessTokenResponse{}
-	if err := json.Unmarshal(bodyBytes, resp); err != nil {
-		return err
-	}
-	c.mapAccessTokenLock.Lock()
-	c.mapAccessToken = resp.AccessToken
-	c.mapAccessTokenExp = resp.ExpiresInSeconds
-	c.mapAccessTokenLock.Unlock()
-	return nil
-}
-
 type query interface {
 	URLValues() (url.Values, error)
 }
 
-func do[expect any](ctx context.Context, c *BaseClient, req query, api string) (*expect, error) {
-	q, err := req.URLValues()
+func do[expect any](
+	ctx context.Context,
+	httpClient *http.Client,
+	api string,
+	token string,
+	req query,
+) (*expect, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, api, nil)
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Endpoint+api, nil)
-	if err != nil {
-		return nil, err
+	request.Header.Set("Authorization", "Bearer "+token)
+	if req != nil {
+		q, err := req.URLValues()
+		if err != nil {
+			return nil, err
+		}
+		request.URL.RawQuery = q.Encode()
 	}
-	request.Header.Set("Authorization", "Bearer "+c.mapAccessToken)
-	request.URL.RawQuery = q.Encode()
-	httpResponse, err := c.HTTPClient.Do(request)
+	httpResponse, err := httpClient.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -163,26 +152,52 @@ func do[expect any](ctx context.Context, c *BaseClient, req query, api string) (
 	return resp, nil
 }
 
-func (c *BaseClient) Geocode(ctx context.Context, req *GeocodeRequest) (*PlaceResults, error) {
-	return do[PlaceResults](ctx, c, req, c.GeoCodeAPI)
+func (c *baseClient) GetNewAccessToken(ctx context.Context) (*AccessTokenResponse, error) {
+	return do[AccessTokenResponse](ctx, http.DefaultClient, V1_TOKEN, c.authToken, nil)
 }
 
-func (c *BaseClient) ReverseGeocode(ctx context.Context, req *ReverseRequest) (*PlaceResults, error) {
-	return do[PlaceResults](ctx, c, req, c.ReverseGeocodeAPI)
+func (c *baseClient) GetAccessToken(ctx context.Context) (string, int64, error) {
+	return c.tokenSaver.GetAccessToken(ctx)
 }
 
-func (c *BaseClient) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
-	return do[SearchResponse](ctx, c, req, c.SearchAPI)
+func (c *baseClient) SetAccessToken(ctx context.Context, accessToken string, exp int64) error {
+	return c.tokenSaver.SetAccessToken(ctx, accessToken, exp)
 }
 
-func (c *BaseClient) SearchAutoComplete(ctx context.Context, req *SearchAutoCompleteRequest) (*SearchAutocompleteResponse, error) {
-	return do[SearchAutocompleteResponse](ctx, c, req, c.SearchAutoAPI)
+func doWithReadAccessToken[expect any](
+	ctx context.Context,
+	saver AccessTokenSaver,
+	httpClient *http.Client,
+	api string,
+	req query,
+) (*expect, error) {
+	accessToken, _, err := saver.GetAccessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return do[expect](ctx, httpClient, api, accessToken, req)
 }
 
-func (c *BaseClient) Directions(ctx context.Context, req *DirectionsRequest) (*DirectionsResponse, error) {
-	return do[DirectionsResponse](ctx, c, req, c.DirectionsAPI)
+func (c *baseClient) Geocode(ctx context.Context, req *GeocodeRequest) (*PlaceResults, error) {
+	return doWithReadAccessToken[PlaceResults](ctx, c, c.client, V1_GEO_CODE, req)
 }
 
-func (c *BaseClient) Eta(ctx context.Context, req *EtaRequest) (*EtaResponse, error) {
-	return do[EtaResponse](ctx, c, req, c.EtasAPI)
+func (c *baseClient) ReverseGeocode(ctx context.Context, req *ReverseRequest) (*PlaceResults, error) {
+	return doWithReadAccessToken[PlaceResults](ctx, c, c.client, V1_REVERSE_GEO_CODE, req)
+}
+
+func (c *baseClient) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
+	return doWithReadAccessToken[SearchResponse](ctx, c, c.client, V1_SEARCH, req)
+}
+
+func (c *baseClient) SearchAutoComplete(ctx context.Context, req *SearchAutoCompleteRequest) (*SearchAutocompleteResponse, error) {
+	return doWithReadAccessToken[SearchAutocompleteResponse](ctx, c, c.client, V1_SEARCH_AUTOCOMPLETE, req)
+}
+
+func (c *baseClient) Directions(ctx context.Context, req *DirectionsRequest) (*DirectionsResponse, error) {
+	return doWithReadAccessToken[DirectionsResponse](ctx, c, c.client, V1_DIRECTIONS, req)
+}
+
+func (c *baseClient) Eta(ctx context.Context, req *EtaRequest) (*EtaResponse, error) {
+	return doWithReadAccessToken[EtaResponse](ctx, c, c.client, V1_ETAS, req)
 }
