@@ -1,0 +1,35 @@
+{
+  "results": [
+    {
+      "coordinate": {
+        "latitude": 37.3301996,
+        "longitude": -122.0106415
+      },
+      "displayMapRegion": {
+        "southLatitude": 37.3257080235794,
+        "westLongitude": -122.01629018770203,
+        "northLatitude": 37.3346911764206,
+        "eastLongitude": -122.00499281229798
+      },
+      "name": "Apple Park Way",
+      "formattedAddressLines": [
+        "Apple Park Way",
+        "Cupertino, CA  95014",
+        "United States"
+      ],
+      "structuredAddress": {
+        "administrativeArea": "California",
+        "administrativeAreaCode": "CA",
+        "locality": "Cupertino",
+        "postCode": "95014",
+        "thoroughfare": "Apple Park Way",
+        "fullThoroughfare": "Apple Park Way",
+        "areasOfInterest": [
+          "Apple Park"
+        ]
+      },
+      "country": "United States",
+      "countryCode": "US"
+    }
+  ]
+}

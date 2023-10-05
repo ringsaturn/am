@@ -1,0 +1,41 @@
+{
+  "displayMapRegion": {
+    "southLatitude": 48.856909736059606,
+    "westLongitude": 2.2924737352877855,
+    "northLatitude": 48.85963364504278,
+    "eastLongitude": 2.2965897526592016
+  },
+  "results": [
+    {
+      "name": "Eiffel Tower",
+      "formattedAddressLines": [
+        "5 Avenue Anatole France",
+        "75007 Paris",
+        "France"
+      ],
+      "structuredAddress": {
+        "administrativeArea": "Île-de-France",
+        "locality": "Paris",
+        "postCode": "75007",
+        "subLocality": "Tour Eiffel-Champs de Mars",
+        "thoroughfare": "Avenue Anatole France",
+        "subThoroughfare": "5",
+        "fullThoroughfare": "5 Avenue Anatole France",
+        "areasOfInterest": [
+          "Eiffel Tower",
+          "Parc Du Champ De Mars"
+        ],
+        "dependentLocalities": [
+          "7th arr.",
+          "Tour Eiffel-Champs de Mars"
+        ]
+      },
+      "country": "France",
+      "countryCode": "FR",
+      "coordinate": {
+        "latitude": 48.85827172505176,
+        "longitude": 2.294531782785587
+      }
+    }
+  ]
+}
