@@ -2,7 +2,6 @@ package am
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -127,7 +126,7 @@ type ReverseRequest struct {
 
 func (req *ReverseRequest) Validate() error {
 	if req.Loc.IsEmpty() {
-		return fmt.Errorf("loc is required")
+		return errors.New("am: loc is required")
 	}
 	return vd.Validate(req)
 }
@@ -339,11 +338,12 @@ type OneOfLoc struct {
 	Location *Location
 }
 
-func (loc OneOfLoc) IsEmpty() bool {
-	return loc.Address == "" && loc.Location.IsEmpty()
+func (loc *OneOfLoc) IsEmpty() bool {
+	return loc.Address == "" &&
+		(loc.Location == nil || loc.Location.IsEmpty())
 }
 
-func (loc OneOfLoc) QueryString() string {
+func (loc *OneOfLoc) QueryString() string {
 	if loc.Address != "" {
 		return loc.Address
 	}
@@ -353,11 +353,11 @@ func (loc OneOfLoc) QueryString() string {
 type DirectionsRequest struct {
 	// (Required) The starting location as an address, or coordinates you
 	// specify as latitude, longitude. For example, origin=37.7857,-122.4011
-	Origin OneOfLoc `query:"origin" vd:"$!=''"`
+	Origin *OneOfLoc `query:"origin" vd:"$!=''"`
 
 	// (Required) The destination as an address, or coordinates you specify as
 	// latitude, longitude. For example, destination=San Francisco City Hall, CA
-	Destination OneOfLoc `query:"destination" vd:"$!=''"`
+	Destination *OneOfLoc `query:"destination" vd:"$!=''"`
 
 	// The date and time to arrive at the destination in ISO 8601 format in UTC
 	// time. For example, 2023-04-15T16:42:00Z.
@@ -422,11 +422,11 @@ func (req *DirectionsRequest) URLValues() (url.Values, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	if req.Origin.IsEmpty() {
-		return nil, errors.New("origin is required")
+	if req.Origin == nil || req.Origin.IsEmpty() {
+		return nil, errors.New("am: origin is required")
 	}
-	if req.Destination.IsEmpty() {
-		return nil, errors.New("destination is required")
+	if req.Destination == nil || req.Destination.IsEmpty() {
+		return nil, errors.New("am: destination is required")
 	}
 	q := make(url.Values)
 	q.Add("origin", req.Origin.QueryString())
@@ -505,13 +505,13 @@ type EtaRequest struct {
 
 func (req *EtaRequest) Validate() error {
 	if req.Origin.IsEmpty() {
-		return fmt.Errorf("origin is required")
+		return errors.New("am: origin is required")
 	}
 	if len(req.Destinations) == 0 {
-		return fmt.Errorf("destinations is required")
+		return errors.New("am: destinations is required")
 	}
 	if len(req.Destinations) > 10 {
-		return fmt.Errorf("destinations max length is 10")
+		return errors.New("am: destinations max length is 10")
 	}
 	return vd.Validate(req)
 }

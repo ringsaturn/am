@@ -18,7 +18,19 @@ var (
 
 	//go:embed testdata/direction_response_1.json
 	expectDirectionResponse1 []byte
+
+	//go:embed testdata/error_response_1.json
+	expectErrorResponse1 []byte
 )
+
+func TestErrorResponseUnmarshal(t *testing.T) {
+	expect := &am.ErrorResponse{}
+	err := json.Unmarshal(expectErrorResponse1, expect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "Not Authorized", expect.Error.Message)
+}
 
 func TestPlaceResultsResponseUnmarshal(t *testing.T) {
 	expect := &am.PlaceResults{}

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	ENDPOINT               = "https://maps.apple.com"
+	ENDPOINT               = "https://maps-api.apple.com"
 	V1_TOKEN               = "/v1/token"              // https://developer.apple.com/documentation/applemapsserverapi/generate_a_maps_access_token
 	V1_GEO_CODE            = "/v1/geocode"            // https://developer.apple.com/documentation/applemapsserverapi/geocode_an_address
 	V1_REVERSE_GEO_CODE    = "/v1/reverseGeocode"     // https://developer.apple.com/documentation/applemapsserverapi/reverse_geocode_a_location
@@ -21,10 +21,13 @@ const (
 )
 
 type Client interface {
-	Geocode(ctx context.Context, req *GeocodeRequest) (*PlaceResults, error)
-	ReverseGeocode(ctx context.Context, req *ReverseRequest) (*PlaceResults, error)
-	Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error)
-	SearchAutoComplete(ctx context.Context, req *SearchAutoCompleteRequest) (*SearchAutocompleteResponse, error)
+	RefreshMapAccessToken(context.Context) error
+	Geocode(context.Context, *GeocodeRequest) (*PlaceResults, error)
+	ReverseGeocode(context.Context, *ReverseRequest) (*PlaceResults, error)
+	Search(context.Context, *SearchRequest) (*SearchResponse, error)
+	SearchAutoComplete(context.Context, *SearchAutoCompleteRequest) (*SearchAutocompleteResponse, error)
+	Directions(context.Context, *DirectionsRequest) (*DirectionsResponse, error)
+	Eta(context.Context, *EtaRequest) (*EtaResponse, error)
 }
 
 type BaseClient struct {
@@ -79,10 +82,11 @@ func NewClient(opts ...Option) Client {
 	return c
 }
 
-func handleErr(httpStatusCode int, bodyBytes []byte) error {
+func handleErr(httpStatusCode int, header http.Header, bodyBytes []byte) error {
 	err := &ErrorFromAPI{
 		StatusCode: httpStatusCode,
 		RawBody:    bodyBytes,
+		Header:     header,
 	}
 	resp := &ErrorResponse{}
 	if _err := json.Unmarshal(bodyBytes, resp); _err != nil {
@@ -109,8 +113,9 @@ func (c *BaseClient) RefreshMapAccessToken(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	header := httpResponse.Header
 	if httpResponse.StatusCode != http.StatusOK {
-		return handleErr(httpResponse.StatusCode, bodyBytes)
+		return handleErr(httpResponse.StatusCode, header, bodyBytes)
 	}
 	resp := &AccessTokenResponse{}
 	if err := json.Unmarshal(bodyBytes, resp); err != nil {
@@ -127,12 +132,12 @@ type query interface {
 	URLValues() (url.Values, error)
 }
 
-func do[expect any](ctx context.Context, c *BaseClient, req query) (*expect, error) {
+func do[expect any](ctx context.Context, c *BaseClient, req query, api string) (*expect, error) {
 	q, err := req.URLValues()
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Endpoint+c.GeoCodeAPI, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Endpoint+api, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +152,9 @@ func do[expect any](ctx context.Context, c *BaseClient, req query) (*expect, err
 	if err != nil {
 		return nil, err
 	}
+	header := httpResponse.Header
 	if httpResponse.StatusCode != http.StatusOK {
-		return nil, handleErr(httpResponse.StatusCode, bodyBytes)
+		return nil, handleErr(httpResponse.StatusCode, header, bodyBytes)
 	}
 	resp := new(expect)
 	if err := json.Unmarshal(bodyBytes, resp); err != nil {
@@ -158,25 +164,25 @@ func do[expect any](ctx context.Context, c *BaseClient, req query) (*expect, err
 }
 
 func (c *BaseClient) Geocode(ctx context.Context, req *GeocodeRequest) (*PlaceResults, error) {
-	return do[PlaceResults](ctx, c, req)
+	return do[PlaceResults](ctx, c, req, c.GeoCodeAPI)
 }
 
 func (c *BaseClient) ReverseGeocode(ctx context.Context, req *ReverseRequest) (*PlaceResults, error) {
-	return do[PlaceResults](ctx, c, req)
+	return do[PlaceResults](ctx, c, req, c.ReverseGeocodeAPI)
 }
 
 func (c *BaseClient) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
-	return do[SearchResponse](ctx, c, req)
+	return do[SearchResponse](ctx, c, req, c.SearchAPI)
 }
 
 func (c *BaseClient) SearchAutoComplete(ctx context.Context, req *SearchAutoCompleteRequest) (*SearchAutocompleteResponse, error) {
-	return do[SearchAutocompleteResponse](ctx, c, req)
+	return do[SearchAutocompleteResponse](ctx, c, req, c.SearchAutoAPI)
 }
 
 func (c *BaseClient) Directions(ctx context.Context, req *DirectionsRequest) (*DirectionsResponse, error) {
-	return do[DirectionsResponse](ctx, c, req)
+	return do[DirectionsResponse](ctx, c, req, c.DirectionsAPI)
 }
 
 func (c *BaseClient) Eta(ctx context.Context, req *EtaRequest) (*EtaResponse, error) {
-	return do[EtaResponse](ctx, c, req)
+	return do[EtaResponse](ctx, c, req, c.EtasAPI)
 }

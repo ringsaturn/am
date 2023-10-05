@@ -10,24 +10,45 @@ type ErrorFromAPI struct {
 	StatusCode int            `json:"statusCode"`
 	Response   *ErrorResponse `json:"response"`
 	RawBody    []byte         `json:"body"`
+	Header     http.Header    `json:"headers"`
 }
 
 func (e *ErrorFromAPI) Error() string {
+	if e.Response == nil {
+		return fmt.Sprintf(
+			"am: call API failed(%d/%s) with raw body=`%s`",
+			e.StatusCode,
+			http.StatusText(e.StatusCode),
+			string(e.RawBody),
+		)
+	}
+	if len(e.Response.Error.Details) == 0 {
+		return fmt.Sprintf(
+			"am: call API failed(%d/%s) with message=%s",
+			e.StatusCode,
+			http.StatusText(e.StatusCode),
+			e.Response.Error.Message,
+		)
+	}
 	return fmt.Sprintf(
 		"am: call API failed(%d/%s) with message=%s and details=`%v`",
 		e.StatusCode,
 		http.StatusText(e.StatusCode),
-		e.Response.Message,
-		strings.Join(e.Response.Details, ", "),
+		e.Response.Error.Message,
+		strings.Join(e.Response.Error.Details, ", "),
 	)
+}
+
+type ErrorResponseError struct {
+	Details []string `json:"details"`
+	Message string   `json:"message"`
 }
 
 // Original response from API.
 //
 // https://developer.apple.com/documentation/applemapsserverapi/errorresponse
 type ErrorResponse struct {
-	Details []string `json:"details"`
-	Message string   `json:"message"`
+	Error ErrorResponseError `json:"error"`
 }
 
 // https://developer.apple.com/documentation/applemapsserverapi/generate_a_maps_access_token
