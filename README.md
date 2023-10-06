@@ -4,6 +4,8 @@
 go install github.com/ringsaturn/am
 ```
 
+## Usage
+
 ```go
 package main
 

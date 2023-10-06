@@ -353,11 +353,11 @@ func (loc *OneOfLoc) QueryString() string {
 type DirectionsRequest struct {
 	// (Required) The starting location as an address, or coordinates you
 	// specify as latitude, longitude. For example, origin=37.7857,-122.4011
-	Origin *OneOfLoc `query:"origin" vd:"$!=''"`
+	Origin OneOfLoc `query:"origin" vd:"$!=''"`
 
 	// (Required) The destination as an address, or coordinates you specify as
 	// latitude, longitude. For example, destination=San Francisco City Hall, CA
-	Destination *OneOfLoc `query:"destination" vd:"$!=''"`
+	Destination OneOfLoc `query:"destination" vd:"$!=''"`
 
 	// The date and time to arrive at the destination in ISO 8601 format in UTC
 	// time. For example, 2023-04-15T16:42:00Z.
@@ -422,10 +422,10 @@ func (req *DirectionsRequest) URLValues() (url.Values, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	if req.Origin == nil || req.Origin.IsEmpty() {
+	if req.Origin.IsEmpty() {
 		return nil, errors.New("am: origin is required")
 	}
-	if req.Destination == nil || req.Destination.IsEmpty() {
+	if req.Destination.IsEmpty() {
 		return nil, errors.New("am: destination is required")
 	}
 	q := make(url.Values)

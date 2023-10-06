@@ -448,8 +448,8 @@ func TestSearchAutoCompleteRequest_URLValues(t *testing.T) {
 
 func TestDirectionsRequest_URLValues(t *testing.T) {
 	type fields struct {
-		Origin                  *am.OneOfLoc
-		Destination             *am.OneOfLoc
+		Origin                  am.OneOfLoc
+		Destination             am.OneOfLoc
 		ArrivalDate             time.Time
 		Avoid                   []am.DirectionsAvoid
 		DepartureDate           time.Time
@@ -469,13 +469,13 @@ func TestDirectionsRequest_URLValues(t *testing.T) {
 		{
 			name: "hello",
 			fields: fields{
-				Origin: &am.OneOfLoc{
+				Origin: am.OneOfLoc{
 					Location: &am.Location{
 						Latitude:  37.33182,
 						Longitude: -122.03118,
 					},
 				},
-				Destination: &am.OneOfLoc{
+				Destination: am.OneOfLoc{
 					Address: "NYC",
 				},
 				ArrivalDate:   time.Unix(1696484859, 0),
