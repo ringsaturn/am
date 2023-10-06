@@ -103,18 +103,21 @@ type baseClient struct {
 
 type Option func(*baseClient)
 
-// Will use memory by default.
+// Will use `memorySaver`(an internal function) default.
+//
+// Please implement your own `AccessTokenSaver` if you want to save access token
+// in Redis or other places.
 func WithTokenSaver(saver AccessTokenSaver) Option {
 	return func(c *baseClient) {
 		c.tokenSaver = saver
 	}
 }
 
-// Will use defaultAutoRefresh by default.
+// Will use `defaultAutoRefresh`(an internal function) by default.
 // If you want to disable auto refresh, please set this option to nil.
 //
 // If you want to implement your own auto refresh function, please make sure the
-// function is thread safe. Because the function will be called by multiple
+// function is thread safe. Because the function could be called by multiple
 // goroutines.
 func WithAutoTokenRefresh(fn AutoRefresh) Option {
 	return func(c *baseClient) {
@@ -122,7 +125,7 @@ func WithAutoTokenRefresh(fn AutoRefresh) Option {
 	}
 }
 
-// Will use http.DefaultClient by default.
+// Will use [http.DefaultClient] by default.
 func WithHTTPClient(client *http.Client) Option {
 	return func(c *baseClient) {
 		c.client = client
