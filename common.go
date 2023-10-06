@@ -6,8 +6,8 @@ import (
 )
 
 type Location struct {
-	Latitude  float64 `json:"latitude" vd:"$>=-90 && $<=90"`
-	Longitude float64 `json:"longitude" vd:"$>=-180 && $<=180"`
+	Latitude  float64 `query:"latitude" json:"latitude" vd:"$>=-90 && $<=90"`
+	Longitude float64 `query:"longitude" json:"longitude" vd:"$>=-180 && $<=180"`
 }
 
 func (Location Location) IsEmpty() bool {
@@ -23,10 +23,10 @@ func (location Location) QueryString() string {
 }
 
 type Region struct {
-	EastLongitude float64 `json:"eastLongitude" vd:"$>=-180 && $<=180"`
-	NorthLatitude float64 `json:"northLatitude" vd:"$>=-90 && $<=90"`
-	SouthLatitude float64 `json:"southLatitude" vd:"$>=-90 && $<=90"`
-	WestLongitude float64 `json:"westLongitude" vd:"$>=-180 && $<=180"`
+	EastLongitude float64 `json:"eastLongitude" query:"eastLongitude" vd:"$>=-180 && $<=180"`
+	NorthLatitude float64 `json:"northLatitude" query:"northLatitude" vd:"$>=-90 && $<=90"`
+	SouthLatitude float64 `json:"southLatitude" query:"southLatitude" vd:"$>=-90 && $<=90"`
+	WestLongitude float64 `json:"westLongitude" query:"westLongitude" vd:"$>=-180 && $<=180"`
 }
 
 func (region Region) IsEmpty() bool {
