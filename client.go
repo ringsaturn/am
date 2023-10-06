@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 )
 
 const (
@@ -48,6 +49,39 @@ func (s *memorySaver) SetAccessToken(ctx context.Context, accessToken string, ex
 	return nil
 }
 
+// AutoRefresh is a function to refresh access token based on token expire time.
+type AutoRefresh func(ctx context.Context, client Client) (string, int64, error)
+
+func newAutoRefresh() AutoRefresh {
+	mutex := &sync.Mutex{}
+	return func(ctx context.Context, client Client) (string, int64, error) {
+		token, exp, err := client.GetAccessToken(ctx)
+		if err != nil {
+			return "", 0, err
+		}
+		// If lock failed, it means another goroutine is refreshing token.
+		// So we just return current token.
+		locked := mutex.TryLock()
+		if !locked {
+			return token, exp, nil
+		}
+		now := time.Now().Unix()
+		if exp-now > 60 {
+			return "", 0, nil
+		}
+		resp, err := client.GetNewAccessToken(ctx)
+		if err != nil {
+			return "", 0, err
+		}
+		err = client.SetAccessToken(ctx, resp.AccessToken, resp.ExpiresInSeconds)
+		if err != nil {
+			return "", 0, err
+		}
+		mutex.Unlock()
+		return resp.AccessToken, resp.ExpiresInSeconds, nil
+	}
+}
+
 type Client interface {
 	AccessTokenSaver
 
@@ -61,9 +95,10 @@ type Client interface {
 }
 
 type baseClient struct {
-	authToken  string
-	tokenSaver AccessTokenSaver
-	client     *http.Client
+	authToken     string
+	tokenSaver    AccessTokenSaver
+	client        *http.Client
+	autoRefreshFn AutoRefresh
 }
 
 type Option func(*baseClient)
@@ -72,6 +107,18 @@ type Option func(*baseClient)
 func WithTokenSaver(saver AccessTokenSaver) Option {
 	return func(c *baseClient) {
 		c.tokenSaver = saver
+	}
+}
+
+// Will use defaultAutoRefresh by default.
+// If you want to disable auto refresh, please set this option to nil.
+//
+// If you want to implement your own auto refresh function, please make sure the
+// function is thread safe. Because the function will be called by multiple
+// goroutines.
+func WithAutoTokenRefresh(fn AutoRefresh) Option {
+	return func(c *baseClient) {
+		c.autoRefreshFn = fn
 	}
 }
 
@@ -87,7 +134,8 @@ func NewClient(authToken string, opts ...Option) Client {
 		tokenSaver: &memorySaver{
 			mapAuthToken: authToken,
 		},
-		client: http.DefaultClient,
+		client:        http.DefaultClient,
+		autoRefreshFn: newAutoRefresh(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -146,7 +194,8 @@ func do[expect any](
 		return nil, handleErr(httpResponse.StatusCode, header, bodyBytes)
 	}
 	resp := new(expect)
-	if err := json.Unmarshal(bodyBytes, resp); err != nil {
+	err = json.Unmarshal(bodyBytes, resp)
+	if err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -166,38 +215,46 @@ func (c *baseClient) SetAccessToken(ctx context.Context, accessToken string, exp
 
 func doWithReadAccessToken[expect any](
 	ctx context.Context,
-	saver AccessTokenSaver,
-	httpClient *http.Client,
+	c *baseClient,
+	autoFresh AutoRefresh,
 	api string,
 	req query,
 ) (*expect, error) {
-	accessToken, _, err := saver.GetAccessToken(ctx)
+	var (
+		accessToken string
+		err         error
+	)
+	if autoFresh != nil {
+		accessToken, _, err = autoFresh(ctx, c)
+	} else {
+		accessToken, _, err = c.GetAccessToken(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
-	return do[expect](ctx, httpClient, api, accessToken, req)
+	return do[expect](ctx, c.client, api, accessToken, req)
 }
 
 func (c *baseClient) Geocode(ctx context.Context, req *GeocodeRequest) (*PlaceResults, error) {
-	return doWithReadAccessToken[PlaceResults](ctx, c, c.client, V1_GEO_CODE, req)
+	return doWithReadAccessToken[PlaceResults](ctx, c, c.autoRefreshFn, V1_GEO_CODE, req)
 }
 
 func (c *baseClient) ReverseGeocode(ctx context.Context, req *ReverseRequest) (*PlaceResults, error) {
-	return doWithReadAccessToken[PlaceResults](ctx, c, c.client, V1_REVERSE_GEO_CODE, req)
+	return doWithReadAccessToken[PlaceResults](ctx, c, c.autoRefreshFn, V1_REVERSE_GEO_CODE, req)
 }
 
 func (c *baseClient) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
-	return doWithReadAccessToken[SearchResponse](ctx, c, c.client, V1_SEARCH, req)
+	return doWithReadAccessToken[SearchResponse](ctx, c, c.autoRefreshFn, V1_SEARCH, req)
 }
 
 func (c *baseClient) SearchAutoComplete(ctx context.Context, req *SearchAutoCompleteRequest) (*SearchAutocompleteResponse, error) {
-	return doWithReadAccessToken[SearchAutocompleteResponse](ctx, c, c.client, V1_SEARCH_AUTOCOMPLETE, req)
+	return doWithReadAccessToken[SearchAutocompleteResponse](ctx, c, c.autoRefreshFn, V1_SEARCH_AUTOCOMPLETE, req)
 }
 
 func (c *baseClient) Directions(ctx context.Context, req *DirectionsRequest) (*DirectionsResponse, error) {
-	return doWithReadAccessToken[DirectionsResponse](ctx, c, c.client, V1_DIRECTIONS, req)
+	return doWithReadAccessToken[DirectionsResponse](ctx, c, c.autoRefreshFn, V1_DIRECTIONS, req)
 }
 
 func (c *baseClient) Eta(ctx context.Context, req *EtaRequest) (*EtaResponse, error) {
-	return doWithReadAccessToken[EtaResponse](ctx, c, c.client, V1_ETAS, req)
+	return doWithReadAccessToken[EtaResponse](ctx, c, c.autoRefreshFn, V1_ETAS, req)
 }
