@@ -65,6 +65,7 @@ func newAutoRefresh() AutoRefresh {
 		if !locked {
 			return token, exp, nil
 		}
+		defer mutex.Unlock()
 		now := time.Now().Unix()
 		if exp-now > 60 {
 			return "", 0, nil
@@ -77,7 +78,6 @@ func newAutoRefresh() AutoRefresh {
 		if err != nil {
 			return "", 0, err
 		}
-		mutex.Unlock()
 		return resp.AccessToken, resp.ExpiresInSeconds, nil
 	}
 }
