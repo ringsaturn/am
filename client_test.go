@@ -41,5 +41,4 @@ func ExampleNewClient() {
 	}
 	customHTTPClient := am.NewClient("your_auth_token", am.WithHTTPClient(customHTTP))
 	fmt.Println(customHTTPClient)
-
 }
