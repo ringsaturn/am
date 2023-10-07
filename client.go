@@ -29,7 +29,6 @@ type AccessTokenSaver interface {
 }
 
 type memorySaver struct {
-	mapAuthToken       string
 	mapAccessToken     string
 	mapAccessTokenExp  int64
 	mapAccessTokenLock sync.RWMutex
@@ -134,9 +133,8 @@ func WithHTTPClient(client *http.Client) Option {
 
 func NewClient(authToken string, opts ...Option) Client {
 	c := &baseClient{
-		tokenSaver: &memorySaver{
-			mapAuthToken: authToken,
-		},
+		authToken:     authToken,
+		tokenSaver:    &memorySaver{},
 		client:        http.DefaultClient,
 		autoRefreshFn: newAutoRefresh(),
 	}
