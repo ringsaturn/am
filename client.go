@@ -67,7 +67,7 @@ func newAutoRefresh() AutoRefresh {
 		defer mutex.Unlock()
 		now := time.Now().Unix()
 		if exp-now > 60 {
-			return "", 0, nil
+			return token, exp, nil
 		}
 		resp, err := client.GetNewAccessToken(ctx)
 		if err != nil {
