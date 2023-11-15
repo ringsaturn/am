@@ -6,6 +6,7 @@ require (
 	github.com/biter777/countries v1.6.6
 	github.com/bytedance/go-tagexpr/v2 v2.9.9
 	github.com/stretchr/testify v1.8.4
+	go.uber.org/mock v0.3.0
 	golang.org/x/text v0.13.0
 )
 
