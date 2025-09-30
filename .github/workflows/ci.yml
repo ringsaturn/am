@@ -11,7 +11,7 @@ jobs:
     name: golangci-lint
     strategy:
       matrix:
-        go: ["1.21"]
+        go: ["1.24", "1.25"]
     permissions:
       contents: read
       pull-requests: read
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: ["1.20", "1.21"]
+        go: ["1.24", "1.25"]
     steps:
       - uses: actions/checkout@v4
 
